@@ -1,0 +1,80 @@
+@baseUrl = http://localhost:3000
+@token = PASTE_ACCESS_TOKEN_HERE
+@orderId = 1
+@productId = 1
+@otherProductId = 2
+@userId = 1
+
+# =============================================================================
+# OrdersController  —  /orders
+#
+# Paste an access token into @token below (get one from auth.http).
+# @productId values must point at active products (see products.http).
+# =============================================================================
+
+### Place an order
+# Any authenticated user. The order is always owned by the token holder:
+# the owner is read from the token, never from the body.
+# Body: items required, 1..50 entries, each with
+#   productId  integer, must exist and be active
+#   quantity   integer 1..1000
+# Prices are read from the catalogue; sending "unitPrice" is rejected with 400.
+POST {{baseUrl}}/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 2
+    },
+    {
+      "productId": {{otherProductId}},
+      "quantity": 1
+    }
+  ]
+}
+
+
+### List orders
+# A customer receives only their own orders.
+# A RESPONSIBLE user receives every order.
+# Query parameters — all optional:
+#   page    integer >= 1      (default 1)
+#   limit   integer 1..100    (default 20)
+#   status  PENDING | CONFIRMED | SHIPPED | DELIVERED | CANCELLED
+#   userId  integer, RESPONSIBLE only; a customer asking for another
+#           user's id gets 403
+GET {{baseUrl}}/orders?page=1&limit=20
+Authorization: Bearer {{token}}
+
+
+### Read one order
+# The order owner, or a RESPONSIBLE user. :id must be an integer.
+# Reading an order that belongs to another user returns 403.
+GET {{baseUrl}}/orders/{{orderId}}
+Authorization: Bearer {{token}}
+
+
+### Change the status of an order
+# RESPONSIBLE only — a customer gets 403 even for their own order.
+# Allowed moves (anything else returns 409):
+#   PENDING   -> CONFIRMED | CANCELLED
+#   CONFIRMED -> SHIPPED | CANCELLED
+#   SHIPPED   -> DELIVERED
+#   DELIVERED and CANCELLED are final
+PATCH {{baseUrl}}/orders/{{orderId}}/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "CONFIRMED"
+}
+
+
+### Delete an order
+# RESPONSIBLE only. Returns 204 on success.
+# The order lines are removed with it (ON DELETE CASCADE).
+DELETE {{baseUrl}}/orders/{{orderId}}
+Authorization: Bearer {{token}}

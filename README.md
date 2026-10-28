@@ -26,7 +26,39 @@
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
 JWT authentication setup, request examples, and access rules are documented in
-[docs/auth.md](docs/auth.md).
+[docs/auth.md](docs/auth.md). The catalogue and orders endpoints -- pagination,
+category filtering, status transitions and the ownership rules -- are documented
+in [docs/api.md](docs/api.md). The database design is in
+[docs/E-Commerce Database Schema ERD.png](docs/E-Commerce%20Database%20Schema%20ERD.png).
+
+Modules: `users`, `products` (products, their images and categories), `orders`
+and `auth`.
+
+## Run with Docker
+
+The whole project runs with Docker Compose: the API and a PostgreSQL instance.
+
+```bash
+cp .env.example .env
+# set JWT_SECRET in .env, then:
+docker compose up --build
+```
+
+The API listens on `http://localhost:3000` and PostgreSQL is published on port
+`5433` so it does not collide with a local installation. Override `API_PORT`,
+`DB_EXPOSED_PORT`, `DB_USERNAME`, `DB_PASSWORD` and `DB_DATABASE` in `.env`.
+Stop the stack with `docker compose down`, and add `-v` to drop the database
+volume as well.
+
+## API documentation
+
+With the application running, open `http://localhost:3000/docs` for the
+interactive OpenAPI (Swagger) documentation. Use **Authorize** to paste the
+token returned by `POST /auth/login`; it is then sent on every request.
+
+Ready-made requests for every endpoint are also in [http/](http/), one `.http`
+file per controller, for the VS Code **REST Client** extension. See
+[http/README.md](http/README.md).
 
 ## Project setup
 

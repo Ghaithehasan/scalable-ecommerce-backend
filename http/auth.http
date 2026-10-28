@@ -1,0 +1,47 @@
+@baseUrl = http://localhost:3000
+@token = PASTE_ACCESS_TOKEN_HERE
+
+# =============================================================================
+# AuthController  —  /auth
+#
+# Run these first: register or log in, copy "accessToken" from the response,
+# and paste it into the @token variable at the top of the other .http files.
+# =============================================================================
+
+# Tip: after sending "Log in" below, you can replace the line above with
+# @token = {{login.response.body.accessToken}}
+# and this file will then use the token automatically.
+
+
+### Register a new account
+# Public — no token needed. Always creates a CUSTOMER; a "role" field is rejected.
+# Rate limited to 5 requests per minute.
+# @name register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Example User",
+  "email": "example.user@example.com",
+  "phone": "+963912345678",
+  "gender": "MALE",
+  "password": "ExamplePassword123!"
+}
+
+
+### Log in
+# Public — no token needed. Rate limited to 5 requests per minute.
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "example.user@example.com",
+  "password": "ExamplePassword123!"
+}
+
+
+### Current account
+# Requires a valid Bearer token. Returns the user the token belongs to.
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
