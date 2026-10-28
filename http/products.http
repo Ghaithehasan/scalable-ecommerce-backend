@@ -1,0 +1,93 @@
+@baseUrl = http://localhost:3000
+@token = PASTE_ACCESS_TOKEN_HERE
+@productId = 1
+@categoryId = 1
+
+# =============================================================================
+# ProductsController  —  /products
+#
+# Paste an access token into @token below (get one from auth.http).
+# @categoryId must point at a category that exists (see categories.http).
+# =============================================================================
+
+### List products
+# Any authenticated user.
+# Query parameters — all optional:
+#   page        integer >= 1        (default 1)
+#   limit       integer 1..100      (default 20)
+#   categoryId  integer             filters by category; unknown id -> 404
+#   isActive    true | false        RESPONSIBLE only; a customer always gets
+#                                   active products whatever is sent here
+GET {{baseUrl}}/products?page=1&limit=20&categoryId={{categoryId}}
+Authorization: Bearer {{token}}
+
+
+### Read one product
+# Any authenticated user. :id must be an integer.
+# A deactivated product is reported as 404 to a customer.
+GET {{baseUrl}}/products/{{productId}}
+Authorization: Bearer {{token}}
+
+
+### Create a product
+# RESPONSIBLE only.
+# Body:
+#   name        required, <= 100 characters
+#   price       required, positive, at most 2 decimal places
+#   categoryId  required, must exist
+#   description optional
+#   isActive    optional (default true)
+#   images      optional, up to 10; at most one may be isPrimary,
+#               and the first becomes primary when none is marked
+# A product has no stock quantity: inventory belongs to the warehouse service.
+POST {{baseUrl}}/products
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Wireless Headphones",
+  "description": "Over-ear, 30h battery",
+  "price": 249.99,
+  "categoryId": {{categoryId}},
+  "isActive": true,
+  "images": [
+    {
+      "imageUrl": "https://cdn.example.com/headphones-front.jpg",
+      "isPrimary": true,
+      "sortOrder": 0
+    },
+    {
+      "imageUrl": "https://cdn.example.com/headphones-side.jpg",
+      "sortOrder": 1
+    }
+  ]
+}
+
+
+### Update a product
+# RESPONSIBLE only. Every field is optional; send only what changes.
+# Sending "images" replaces the whole image set of the product.
+PATCH {{baseUrl}}/products/{{productId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Wireless Headphones Pro",
+  "price": 299.00,
+  "isActive": true,
+  "images": [
+    {
+      "imageUrl": "https://cdn.example.com/headphones-pro.jpg",
+      "isPrimary": true,
+      "sortOrder": 0
+    }
+  ]
+}
+
+
+### Delete a product
+# RESPONSIBLE only. Returns 204 on success.
+# Returns 409 once the product appears in an order; withdraw it from sale with
+# PATCH { "isActive": false } instead.
+DELETE {{baseUrl}}/products/{{productId}}
+Authorization: Bearer {{token}}

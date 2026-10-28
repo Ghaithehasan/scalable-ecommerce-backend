@@ -1,0 +1,61 @@
+@baseUrl = http://localhost:3000
+@token = PASTE_ACCESS_TOKEN_HERE
+@categoryId = 1
+
+# =============================================================================
+# CategoriesController  —  /categories
+#
+# Paste an access token into @token below (get one from auth.http).
+# Create a category here first: a product cannot exist without one.
+# =============================================================================
+
+### List categories
+# Any authenticated user.
+# Query parameters — all optional:
+#   page      integer >= 1          (default 1)
+#   limit     integer 1..100        (default 20)
+#   isActive  true | false
+GET {{baseUrl}}/categories?page=1&limit=20
+Authorization: Bearer {{token}}
+
+
+### Read one category
+# Any authenticated user. :id must be an integer.
+GET {{baseUrl}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+
+
+### Create a category
+# RESPONSIBLE only.
+# Body: name required; slug, description and isActive optional.
+# "slug" is derived from "name" when omitted ("Home & Kitchen" -> "home-kitchen").
+POST {{baseUrl}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Phones & Tablets",
+  "slug": "phones-tablets",
+  "description": "Smartphones, tablets and accessories",
+  "isActive": true
+}
+
+
+### Update a category
+# RESPONSIBLE only. Every field is optional; send only what changes.
+PATCH {{baseUrl}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Phones, Tablets & Wearables",
+  "description": "Updated description",
+  "isActive": true
+}
+
+
+### Delete a category
+# RESPONSIBLE only. Returns 204 on success.
+# Returns 409 while products are still classified under this category.
+DELETE {{baseUrl}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}

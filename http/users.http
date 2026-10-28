@@ -1,0 +1,36 @@
+@baseUrl = http://localhost:3000
+@token = PASTE_ACCESS_TOKEN_HERE
+@userId = 1
+
+# =============================================================================
+# UsersController  —  /users
+#
+# Paste an access token into @token below (get one from auth.http).
+# =============================================================================
+
+### List all users
+# RESPONSIBLE only.
+GET {{baseUrl}}/users
+Authorization: Bearer {{token}}
+
+
+### Read one user
+# The account owner, or a RESPONSIBLE user.
+# :id must be an integer.
+GET {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{token}}
+
+
+### Create a user
+# RESPONSIBLE only. Creates a CUSTOMER; a "role" field is rejected.
+POST {{baseUrl}}/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Created By Manager",
+  "email": "created.by.manager@example.com",
+  "phone": "+963912345679",
+  "gender": "FEMALE",
+  "password": "ExamplePassword123!"
+}

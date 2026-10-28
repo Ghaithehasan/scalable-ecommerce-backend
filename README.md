@@ -56,6 +56,10 @@ With the application running, open `http://localhost:3000/docs` for the
 interactive OpenAPI (Swagger) documentation. Use **Authorize** to paste the
 token returned by `POST /auth/login`; it is then sent on every request.
 
+Ready-made requests for every endpoint are also in [http/](http/), one `.http`
+file per controller, for the VS Code **REST Client** extension. See
+[http/README.md](http/README.md).
+
 ## Project setup
 
 ```bash
