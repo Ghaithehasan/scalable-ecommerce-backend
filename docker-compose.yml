@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: ecommerce-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_DATABASE:-internet_app}
+    ports:
+      - '${DB_EXPOSED_PORT:-5433}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE:-internet_app}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      target: runtime
+    container_name: ecommerce-api
+    restart: unless-stopped
+    # The API starts only once PostgreSQL accepts connections, so the schema
+    # synchronisation on boot does not race the database.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_DATABASE: ${DB_DATABASE:-internet_app}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env before starting the stack}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
+      JWT_ISSUER: ${JWT_ISSUER:-ecommerce-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ecommerce-client}
+      PORT: 3000
+    ports:
+      - '${API_PORT:-3000}:3000'
+
+volumes:
+  postgres-data:
