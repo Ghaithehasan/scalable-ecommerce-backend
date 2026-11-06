@@ -29,14 +29,14 @@ Authorization header.
 
 ## Endpoints
 
-| Method | Route            | Access                                  |
-| ------ | ---------------- | --------------------------------------- |
-| POST   | `/auth/register` | Public; creates a CUSTOMER account      |
-| POST   | `/auth/login`    | Public                                  |
-| GET    | `/auth/me`       | Authenticated user                      |
-| GET    | `/users`         | RESPONSIBLE                             |
-| GET    | `/users/:id`     | Account owner or RESPONSIBLE            |
-| POST   | `/users`         | RESPONSIBLE; creates a CUSTOMER account |
+| Method | Route                   | Access                                  |
+| ------ | ----------------------- | --------------------------------------- |
+| POST   | `/api/v1/auth/register` | Public; creates a CUSTOMER account      |
+| POST   | `/api/v1/auth/login`    | Public                                  |
+| GET    | `/api/v1/auth/me`       | Authenticated user                      |
+| GET    | `/api/v1/users`         | RESPONSIBLE                             |
+| GET    | `/api/v1/users/:id`     | Account owner or RESPONSIBLE            |
+| POST   | `/api/v1/users`         | RESPONSIBLE; creates a CUSTOMER account |
 
 Registration uses the existing `CreateUserDto`:
 
@@ -63,7 +63,7 @@ public user fields. Registration returns HTTP 201; login returns HTTP 200. Send
 the returned token on protected requests:
 
 ```http
-GET /auth/me HTTP/1.1
+GET /api/v1/auth/me HTTP/1.1
 Host: localhost:3000
 Authorization: Bearer <accessToken>
 ```

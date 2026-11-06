@@ -1,0 +1,17 @@
+
+services:
+  api:
+    image: ecommerce-api:azure
+    container_name: ecommerce-api
+
+    restart: unless-stopped
+
+    env_file:
+      - .env.production
+
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+
+    ports:
+      - "127.0.0.1:3000:3000"

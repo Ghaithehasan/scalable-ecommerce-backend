@@ -1,6 +1,8 @@
+
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { ProductsModule } from './products/products.module';
@@ -17,15 +19,24 @@ import { OrdersModule } from './orders/orders.module';
       useFactory: (configService: ConfigService) => ({
         type: 'postgres',
 
-        host: configService.get<string>('DB_HOST'),
-        port: configService.get<number>('DB_PORT'),
+        host: configService.getOrThrow<string>('DB_HOST'),
+        port: Number(configService.get<string>('DB_PORT') ?? 5432),
 
-        username: configService.get<string>('DB_USERNAME'),
-        password: configService.get<string>('DB_PASSWORD'),
-        database: configService.get<string>('DB_DATABASE'),
+        username: configService.getOrThrow<string>('DB_USERNAME'),
+        password: configService.getOrThrow<string>('DB_PASSWORD'),
+        database: configService.getOrThrow<string>('DB_DATABASE'),
 
+        // Load entities automatically from imported modules
         autoLoadEntities: true,
-        synchronize: true,
+
+        // Never synchronize the schema automatically in production
+        synchronize: configService.get<string>('NODE_ENV') !== 'production',
+
+        // Use TLS when connecting to Azure PostgreSQL
+        ssl:
+          configService.get<string>('DB_SSL') === 'true'
+            ? { rejectUnauthorized: true }
+            : false,
       }),
     }),
 
