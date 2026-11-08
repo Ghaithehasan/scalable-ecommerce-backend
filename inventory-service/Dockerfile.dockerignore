@@ -1,0 +1,22 @@
+# BuildKit reads <dockerfile>.dockerignore in preference to the context's
+# .dockerignore. That matters here: the build context is the repository
+# root, whose .dockerignore excludes inventory-service entirely, which
+# would leave this build with no source at all.
+# Relative to the repository root, since that is the build context.
+**/node_modules
+**/dist
+**/coverage
+.git
+.github
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+**/*.tsbuildinfo
+docs
+test
+http
+.vscode
+.idea
+# The main application is built from its own Dockerfile at the repository root.
+src

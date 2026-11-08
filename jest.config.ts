@@ -14,6 +14,9 @@ const config: Config = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
   testRegex: '.*\\.spec\\.ts$',
+  // The inventory microservice has its own Jest setup and dependencies; the
+  // root test run must not try to execute its suites.
+  testPathIgnorePatterns: ['/node_modules/', '/inventory-service/'],
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },

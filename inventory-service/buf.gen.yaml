@@ -1,0 +1,18 @@
+# Dev-time only. The generated code in src/generated is committed, so neither
+# buf nor ts-proto is needed to build or run the Docker image.
+#
+# Encode/decode helpers are switched off deliberately: @grpc/proto-loader does
+# the wire serialisation at runtime, so those helpers would be dead code that
+# drags @bufbuild/protobuf in as a runtime dependency.
+version: v2
+clean: true
+plugins:
+  - local: protoc-gen-ts_proto
+    out: src/generated
+    opt:
+      - nestJs=true
+      - outputEncodeMethods=false
+      - outputJsonMethods=false
+      - outputClientImpl=false
+      - esModuleInterop=true
+      - snakeToCamel=true

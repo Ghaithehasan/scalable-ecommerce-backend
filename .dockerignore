@@ -12,3 +12,6 @@ docs
 test
 .vscode
 .idea
+
+# The inventory microservice builds from its own Dockerfile.
+inventory-service
