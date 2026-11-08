@@ -11,7 +11,10 @@
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "target": "ES2023",
-    "types": ["node", "jest"],
+    "types": [
+      "node",
+      "jest"
+    ],
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": ".",
@@ -20,5 +23,10 @@
     "strict": true,
     "strictPropertyInitialization": false
   },
-  "exclude": ["node_modules", "dist", "inventory-service"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "inventory-service",
+    "scripts"
+  ]
 }

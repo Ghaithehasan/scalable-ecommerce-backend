@@ -2,10 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 
 import {
@@ -14,6 +15,11 @@ import {
 } from '../common/authorization/resource-ownership';
 import { isUniqueViolation } from '../common/database/postgres-errors';
 import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
+import { InventoryClient } from '../inventory/inventory.client';
+import {
+  InsufficientStockException,
+  mapGrpcError,
+} from '../inventory/inventory.errors';
 import { ProductsService } from '../products/products.service';
 import type { UserResponseDto } from '../users/dto/user-response.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -36,14 +42,29 @@ export class OrdersService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly productsService: ProductsService,
+    private readonly inventory: InventoryClient,
   ) {}
+
+  private readonly logger = new Logger(OrdersService.name);
 
   /**
    * Places an order for the authenticated user.
    *
    * Prices are copied from the catalogue into the order lines, so the order
-   * keeps the price that applied when it was placed. Stock is deliberately not
-   * touched: quantities belong to the warehouse service of requirement 2.
+   * keeps the price that applied when it was placed. Quantities are not ours:
+   * they are reserved from the inventory service over gRPC, in ONE call for
+   * the whole basket, before any row is written here.
+   *
+   * The order of operations matters:
+   *
+   *   1. reserve, OUTSIDE the transaction. A network call inside a database
+   *      transaction would hold row locks for the length of a round trip and
+   *      tie our commit to another service's latency.
+   *   2. write the order inside the transaction, retrying only the
+   *      transaction, never the reservation.
+   *   3. if anything after a successful reserve fails, release the
+   *      reservation. A timed-out reserve may still have succeeded on the
+   *      server, so compensation runs for those too.
    */
   async create(
     dto: CreateOrderDto,
@@ -60,9 +81,64 @@ export class OrdersService {
       );
     }
 
-    // Order numbers carry a random suffix. A collision aborts the transaction
-    // in PostgreSQL, so the retry restarts the whole transaction rather than
-    // issuing another statement inside the aborted one.
+    // Generated here, before the call, so a retry or a compensating release
+    // always names the same reservation.
+    const reservationId = randomUUID();
+    await this.reserve(reservationId, dto);
+
+    try {
+      return await this.writeOrder(dto, currentUser);
+    } catch (error) {
+      await this.compensate(reservationId, error);
+      throw error;
+    }
+  }
+
+  /** One gRPC call for the whole basket. Throws unless everything is held. */
+  private async reserve(
+    reservationId: string,
+    dto: CreateOrderDto,
+  ): Promise<void> {
+    let response;
+
+    try {
+      response = await this.inventory.reserveStock(
+        reservationId,
+        dto.items.map((item) => ({
+          // The contract uses strings so it does not depend on our id type.
+          productId: String(item.productId),
+          quantity: item.quantity,
+        })),
+      );
+    } catch (error) {
+      this.logger.error(
+        `ReserveStock failed for reservation ${reservationId}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+
+      // A reserve that timed out may still have succeeded on the server, so
+      // the units are handed back before the customer is told anything.
+      await this.compensate(reservationId, error);
+      throw mapGrpcError(error, 'the stock reservation');
+    }
+
+    if (!response.reserved) {
+      // A business refusal, not an error: nothing was reserved, so there is
+      // nothing to compensate.
+      throw new InsufficientStockException(response.shortages);
+    }
+  }
+
+  /**
+   * Writes the order, retrying only on an order-number collision.
+   *
+   * The reservation is deliberately outside this loop: retrying the
+   * transaction must never reserve a second time.
+   */
+  private async writeOrder(
+    dto: CreateOrderDto,
+    currentUser: UserResponseDto,
+  ): Promise<OrderEntity> {
     for (let attempt = 1; ; attempt += 1) {
       try {
         const orderId = await this.placeOrder(dto, currentUser);
@@ -74,6 +150,34 @@ export class OrdersService {
 
         throw error;
       }
+    }
+  }
+
+  /**
+   * Gives the reserved units back after a failure.
+   *
+   * It never throws: the customer is already receiving an error about the
+   * original problem, and replacing it with a second one would hide the cause.
+   * A failed release is logged loudly instead, because it means stock is held
+   * for an order that does not exist.
+   */
+  private async compensate(
+    reservationId: string,
+    cause: unknown,
+  ): Promise<void> {
+    try {
+      const { released } = await this.inventory.releaseStock(reservationId);
+      this.logger.warn(
+        `Released reservation ${reservationId} after a failure (released=${released}): ` +
+          `${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    } catch (releaseError) {
+      this.logger.error(
+        `COMPENSATION FAILED for reservation ${reservationId}; stock may stay reserved`,
+        releaseError instanceof Error
+          ? releaseError.stack
+          : String(releaseError),
+      );
     }
   }
 

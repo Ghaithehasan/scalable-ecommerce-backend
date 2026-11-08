@@ -35,7 +35,9 @@ export class ProductsController {
     summary: 'List products',
     description:
       'Supports `page`, `limit` and `categoryId`. A RESPONSIBLE user may also ' +
-      'pass `isActive`; customers always receive active products only.',
+      'pass `isActive`; customers always receive active products only. Each ' +
+      'product carries `stock` read from the inventory service in one batch ' +
+      'call per page.',
   })
   findAll(
     @Query() query: QueryProductsDto,
@@ -45,13 +47,17 @@ export class ProductsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Read one product' })
-  async findOne(
+  @ApiOperation({
+    summary: 'Read one product',
+    description:
+      'Includes `stock` from the inventory service. It is null when the ' +
+      'warehouse cannot be reached, so the product page still renders.',
+  })
+  findOne(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() currentUser: UserResponseDto,
   ): Promise<ProductResponseDto> {
-    const product = await this.productsService.findOneOrFail(id, currentUser);
-    return ProductResponseDto.fromEntity(product);
+    return this.productsService.findOneWithStock(id, currentUser);
   }
 
   @Post()

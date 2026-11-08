@@ -1,4 +1,6 @@
+import { status } from '@grpc/grpc-js';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
+import { QueryFailedError } from 'typeorm';
 import request from 'supertest';
 
 import { OrderEntity } from '../src/orders/entities/order.entity';
@@ -7,6 +9,7 @@ import { OrderStatus } from '../src/orders/enums/order-status.enum';
 import { OrdersController } from '../src/orders/orders.controller';
 import { OrdersService } from '../src/orders/orders.service';
 import { ProductEntity } from '../src/products/entities/product.entity';
+import { InventoryClient } from '../src/inventory/inventory.client';
 import { ProductsService } from '../src/products/products.service';
 import {
   createHarness,
@@ -72,6 +75,7 @@ function makeOrder(
 describe('Orders HTTP API (mocked repositories)', () => {
   let harness: Harness;
   let orderRepository: Record<string, jest.Mock>;
+  let inventoryClient: Record<string, jest.Mock>;
   let orders: OrderEntity[];
 
   // Order 1 belongs to CUSTOMER (id 10), order 2 to OTHER_CUSTOMER (id 11).
@@ -157,6 +161,16 @@ describe('Orders HTTP API (mocked repositories)', () => {
         ),
     };
 
+    // The warehouse is a separate service reached over gRPC; here it is
+    // mocked so the order flow can be driven through every answer it gives.
+    inventoryClient = {
+      reserveStock: jest
+        .fn()
+        .mockResolvedValue({ reserved: true, shortages: [] }),
+      releaseStock: jest.fn().mockResolvedValue({ released: true }),
+      getStock: jest.fn().mockResolvedValue(new Map()),
+    };
+
     harness = await createHarness({
       controllers: [OrdersController],
       providers: [
@@ -164,6 +178,7 @@ describe('Orders HTTP API (mocked repositories)', () => {
         { provide: getRepositoryToken(OrderEntity), useValue: orderRepository },
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: ProductsService, useValue: productsService },
+        { provide: InventoryClient, useValue: inventoryClient },
       ],
     });
   });
@@ -387,6 +402,161 @@ describe('Orders HTTP API (mocked repositories)', () => {
         .patch('/orders/1/status')
         .send({ status: 'ARCHIVED' })
         .expect(400);
+    });
+  });
+
+  /**
+   * Requirement 2: the application reserves stock from the inventory service
+   * before it writes an order, and gives it back if anything afterwards goes
+   * wrong.
+   */
+  describe('stock reservation over gRPC', () => {
+    const body = { items: [{ productId: 1, quantity: 2 }] };
+
+    const grpcError = (code: status, details: string): Error =>
+      Object.assign(new Error(details), { code, details });
+
+    it('reserves the whole basket in ONE call before writing anything', async () => {
+      await request(harness.app.getHttpServer())
+        .post('/orders')
+        .send({
+          items: [
+            { productId: 1, quantity: 2 },
+            { productId: 2, quantity: 3 },
+          ],
+        })
+        .expect(201);
+
+      expect(inventoryClient.reserveStock).toHaveBeenCalledTimes(1);
+
+      const [reservationId, items] = inventoryClient.reserveStock.mock.calls[0];
+      // A UUID the caller generated, so retries and compensation can name it.
+      expect(reservationId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
+      // The contract takes strings, whatever our own id type is.
+      expect(items).toEqual([
+        { productId: '1', quantity: 2 },
+        { productId: '2', quantity: 3 },
+      ]);
+      expect(inventoryClient.releaseStock).not.toHaveBeenCalled();
+    });
+
+    it('refuses the order with 409 and the shortages when stock is short', async () => {
+      inventoryClient.reserveStock.mockResolvedValueOnce({
+        reserved: false,
+        shortages: [{ productId: '1', requested: 2, available: 0 }],
+      });
+
+      const response = await request(harness.app.getHttpServer())
+        .post('/orders')
+        .send(body)
+        .expect(409);
+
+      expect(response.body.shortages).toEqual([
+        { productId: 1, requested: 2, available: 0 },
+      ]);
+      // Nothing was reserved, so there is nothing to give back.
+      expect(inventoryClient.releaseStock).not.toHaveBeenCalled();
+      expect(orderRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('does not write an order when the reservation is refused', async () => {
+      inventoryClient.reserveStock.mockResolvedValueOnce({
+        reserved: false,
+        shortages: [{ productId: '1', requested: 2, available: 1 }],
+      });
+
+      await request(harness.app.getHttpServer())
+        .post('/orders')
+        .send(body)
+        .expect(409);
+
+      expect(orders).toHaveLength(2);
+    });
+
+    it.each([
+      ['the warehouse is down', status.UNAVAILABLE],
+      ['the warehouse does not answer in time', status.DEADLINE_EXCEEDED],
+    ])('answers 503 when %s', async (_name, code) => {
+      inventoryClient.reserveStock.mockRejectedValueOnce(
+        grpcError(code, 'inventory is not reachable'),
+      );
+
+      const response = await request(harness.app.getHttpServer())
+        .post('/orders')
+        .send(body)
+        .expect(503);
+
+      // The customer is told plainly, and told the order was NOT placed.
+      expect(String(response.body.message)).toMatch(/not placed/i);
+      expect(orderRepository.save).not.toHaveBeenCalled();
+      // A reserve that timed out may still have succeeded on the server, so
+      // the units are handed back regardless.
+      expect(inventoryClient.releaseStock).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases the reservation when saving the order fails', async () => {
+      const databaseError = new Error('database went away');
+      orderRepository.save.mockRejectedValueOnce(databaseError);
+
+      await request(harness.app.getHttpServer())
+        .post('/orders')
+        .send(body)
+        .expect(500);
+
+      expect(inventoryClient.reserveStock).toHaveBeenCalledTimes(1);
+      expect(inventoryClient.releaseStock).toHaveBeenCalledTimes(1);
+
+      // The same reservation id, otherwise the compensation would release
+      // nothing and the stock would stay held forever.
+      const reservedId = inventoryClient.reserveStock.mock.calls[0][0];
+      const releasedId = inventoryClient.releaseStock.mock.calls[0][0];
+      expect(releasedId).toBe(reservedId);
+    });
+
+    it('still answers the original error when the compensation also fails', async () => {
+      orderRepository.save.mockRejectedValueOnce(new Error('database is gone'));
+      inventoryClient.releaseStock.mockRejectedValueOnce(
+        grpcError(status.UNAVAILABLE, 'inventory is not reachable either'),
+      );
+
+      // The customer hears about the real problem, not about the failed
+      // clean-up attempt.
+      await request(harness.app.getHttpServer())
+        .post('/orders')
+        .send(body)
+        .expect(500);
+    });
+
+    it('retries only the transaction, never the reservation', async () => {
+      // An order-number collision makes the write retry; the reservation must
+      // not be repeated, or the basket would be reserved twice.
+      orderRepository.save.mockRejectedValueOnce(
+        new QueryFailedError(
+          'INSERT INTO orders',
+          [],
+          Object.assign(new Error('duplicate key'), { code: '23505' }),
+        ),
+      );
+
+      await request(harness.app.getHttpServer())
+        .post('/orders')
+        .send(body)
+        .expect(201);
+
+      expect(orderRepository.save).toHaveBeenCalledTimes(2);
+      expect(inventoryClient.reserveStock).toHaveBeenCalledTimes(1);
+      expect(inventoryClient.releaseStock).not.toHaveBeenCalled();
+    });
+
+    it('does not reserve when the request never reaches the handler', async () => {
+      await request(harness.app.getHttpServer())
+        .post('/orders')
+        .send({ items: [] })
+        .expect(400);
+
+      expect(inventoryClient.reserveStock).not.toHaveBeenCalled();
     });
   });
 

@@ -18,6 +18,19 @@ export class ProductImageResponseDto {
   }
 }
 
+/**
+ * Quantities owned by the inventory service, not by this application.
+ *
+ * `null` means the warehouse could not be reached. The catalogue still
+ * renders - a product page without a stock figure is far better than an error
+ * page - and the null is explicit so a client can say "unavailable" rather
+ * than silently showing zero.
+ */
+export class ProductStockDto {
+  available: number;
+  reserved: number;
+}
+
 export class ProductResponseDto {
   id: number;
   name: string;
@@ -27,10 +40,14 @@ export class ProductResponseDto {
   category: CategoryResponseDto | null;
   isActive: boolean;
   images: ProductImageResponseDto[];
+  stock: ProductStockDto | null;
   createdAt: Date;
   updatedAt: Date;
 
-  static fromEntity(product: ProductEntity): ProductResponseDto {
+  static fromEntity(
+    product: ProductEntity,
+    stock: ProductStockDto | null = null,
+  ): ProductResponseDto {
     const images = product.images ?? [];
 
     return {
@@ -46,6 +63,7 @@ export class ProductResponseDto {
       images: [...images]
         .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
         .map((image) => ProductImageResponseDto.fromEntity(image)),
+      stock,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt,
     };

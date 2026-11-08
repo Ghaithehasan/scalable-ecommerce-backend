@@ -8,6 +8,7 @@ import { CategoryEntity } from '../src/products/entities/category.entity';
 import { ProductEntity } from '../src/products/entities/product.entity';
 import { ProductImageEntity } from '../src/products/entities/product-image.entity';
 import { ProductsController } from '../src/products/products.controller';
+import { InventoryClient } from '../src/products/../inventory/inventory.client';
 import { ProductsService } from '../src/products/products.service';
 import { createHarness, CUSTOMER, Harness, RESPONSIBLE } from './test-harness';
 
@@ -54,6 +55,7 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
   let productRepository: Record<string, jest.Mock>;
   let categoryRepository: Record<string, jest.Mock>;
   let imageRepository: Record<string, jest.Mock>;
+  let inventoryClient: Record<string, jest.Mock>;
 
   const createProductBody = {
     name: 'Wireless Headphones',
@@ -144,6 +146,17 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
       create: jest.fn().mockImplementation((data: unknown) => data),
     };
 
+    // Quantities come from the inventory service over gRPC.
+    inventoryClient = {
+      getStock: jest
+        .fn()
+        .mockResolvedValue(
+          new Map([['1', { available: 7, reserved: 2 }]]),
+        ),
+      reserveStock: jest.fn(),
+      releaseStock: jest.fn(),
+    };
+
     const dataSource = {
       transaction: jest
         .fn()
@@ -172,6 +185,7 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
           useValue: categoryRepository,
         },
         { provide: getDataSourceToken(), useValue: dataSource },
+        { provide: InventoryClient, useValue: inventoryClient },
       ],
     });
   });
@@ -277,6 +291,40 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
         isActive: true,
       });
       expect(response.body.category).toMatchObject({ id: 1 });
+    });
+
+    it('shows the quantity the inventory service holds', async () => {
+      const response = await request(harness.app.getHttpServer())
+        .get('/products/1')
+        .expect(200);
+
+      expect(inventoryClient.getStock).toHaveBeenCalledWith(['1']);
+      expect(response.body.stock).toEqual({ available: 7, reserved: 2 });
+    });
+
+    it('reads the whole page of quantities in one batch call', async () => {
+      harness.actAs(RESPONSIBLE);
+
+      await request(harness.app.getHttpServer())
+        .get('/products?limit=100')
+        .expect(200);
+
+      // One call for the page, not one per product.
+      expect(inventoryClient.getStock).toHaveBeenCalledTimes(1);
+      expect(inventoryClient.getStock.mock.calls[0][0]).toEqual(['1', '2', '3']);
+    });
+
+    it('still serves the product when the warehouse cannot be reached', async () => {
+      // getStock swallows an unreachable warehouse and returns nothing.
+      inventoryClient.getStock.mockResolvedValueOnce(new Map());
+
+      const response = await request(harness.app.getHttpServer())
+        .get('/products/1')
+        .expect(200);
+
+      expect(response.body.id).toBe(1);
+      // Explicitly null, so a client can say "unavailable" rather than "0".
+      expect(response.body.stock).toBeNull();
     });
 
     it('hides a deactivated product from a customer', async () => {

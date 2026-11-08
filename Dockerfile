@@ -21,6 +21,12 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
+# The gRPC client loads the contract at runtime, so it ships with the image.
+# proto/ is shared with the inventory service and is deliberately NOT excluded
+# in .dockerignore.
+COPY proto ./proto
+ENV PROTO_DIR=/app/proto
+
 # Runs unprivileged; the image ships no source, tests or build tooling.
 USER node
 EXPOSE 3000

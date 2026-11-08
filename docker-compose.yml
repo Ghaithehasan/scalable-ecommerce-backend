@@ -40,6 +40,14 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-ecommerce-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-ecommerce-client}
       PORT: 3000
+      # The inventory service runs from inventory-service/docker-compose.yml,
+      # so it is reached through the host gateway rather than a shared network.
+      INVENTORY_GRPC_URL: ${INVENTORY_GRPC_URL:-host.docker.internal:50051}
+      INVENTORY_RESERVE_TIMEOUT_MS: ${INVENTORY_RESERVE_TIMEOUT_MS:-3000}
+      INVENTORY_READ_TIMEOUT_MS: ${INVENTORY_READ_TIMEOUT_MS:-1500}
+      INVENTORY_RELEASE_TIMEOUT_MS: ${INVENTORY_RELEASE_TIMEOUT_MS:-5000}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
       - '${API_PORT:-3000}:3000'
 

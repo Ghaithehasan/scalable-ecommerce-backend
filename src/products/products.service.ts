@@ -13,6 +13,7 @@ import {
   Repository,
 } from 'typeorm';
 
+import { InventoryClient } from '../inventory/inventory.client';
 import { isForeignKeyViolation } from '../common/database/postgres-errors';
 import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 import { isPrivileged } from '../common/authorization/resource-ownership';
@@ -34,7 +35,28 @@ export class ProductsService {
     private readonly categoriesService: CategoriesService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly inventory: InventoryClient,
   ) {}
+
+  /**
+   * Asks the warehouse for the quantities of a page of products.
+   *
+   * One batch call per page, not one per product: the contract takes a list
+   * for exactly this reason. A product the warehouse does not stock, or a
+   * warehouse that cannot be reached, yields `null` rather than an error -
+   * the catalogue must keep working without it.
+   */
+  private async stockFor(
+    products: ProductEntity[],
+  ): Promise<Map<number, { available: number; reserved: number }>> {
+    const levels = await this.inventory.getStock(
+      products.map((product) => String(product.id)),
+    );
+
+    return new Map(
+      [...levels].map(([productId, level]) => [Number(productId), level]),
+    );
+  }
 
   /**
    * Returns one page of products.
@@ -73,12 +95,26 @@ export class ProductsService {
       take: query.limit,
     });
 
+    const stock = await this.stockFor(products);
+
     return PaginatedResponseDto.of(
-      products.map((product) => ProductResponseDto.fromEntity(product)),
+      products.map((product) =>
+        ProductResponseDto.fromEntity(product, stock.get(product.id) ?? null),
+      ),
       total,
       query.page,
       query.limit,
     );
+  }
+
+  /** Reads one product together with the quantity the warehouse holds. */
+  async findOneWithStock(
+    id: number,
+    currentUser: UserResponseDto,
+  ): Promise<ProductResponseDto> {
+    const product = await this.findOneOrFail(id, currentUser);
+    const stock = await this.stockFor([product]);
+    return ProductResponseDto.fromEntity(product, stock.get(product.id) ?? null);
   }
 
   /**

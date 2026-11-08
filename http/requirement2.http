@@ -1,0 +1,160 @@
+@baseUrl = http://localhost:3000
+@token = PASTE_ACCESS_TOKEN_HERE
+
+# The product id used for the normal scenarios. Set it to one your catalogue
+# actually has (GET /products shows them), then give it stock in the warehouse:
+#
+#   cd inventory-service
+#   docker compose exec inventory-postgres psql -U postgres -d inventory \
+#     -c "INSERT INTO stock (product_id, available, reserved) VALUES ('2', 10, 0) \
+#         ON CONFLICT (product_id) DO UPDATE SET available=10, reserved=0"
+@productId = 2
+
+# A product the WAREHOUSE knows but the CATALOGUE does not. Used to force the
+# "reserved, then the order failed to save" case. Create it with:
+#
+#   docker compose exec inventory-postgres psql -U postgres -d inventory \
+#     -c "INSERT INTO stock (product_id, available, reserved) VALUES ('9999', 10, 0) \
+#         ON CONFLICT (product_id) DO UPDATE SET available=10, reserved=0"
+@orphanProductId = 9999
+
+# =============================================================================
+# Requirement 2 - the main application talking to the inventory service
+#
+# Paste an access token into @token above (get one from auth.http).
+# Full walkthrough: docs/inventory-service/manual-testing-ar.md
+# =============================================================================
+
+### Product details carry the warehouse quantity
+# The `stock` block comes from the inventory service over gRPC.
+# It is null when the warehouse cannot be reached - the page still renders.
+GET {{baseUrl}}/products/{{productId}}
+Authorization: Bearer {{token}}
+
+
+### The product list carries stock too
+# One batch GetStock call for the whole page, not one call per product.
+GET {{baseUrl}}/products?page=1&limit=10
+Authorization: Bearer {{token}}
+
+
+### A normal order - reserves stock, then writes the order
+# Expect 201. Re-read the product afterwards: available drops, reserved rises.
+POST {{baseUrl}}/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 2
+    }
+  ]
+}
+
+
+### CASE 1 - not enough stock
+# Ask for more than the warehouse holds, but stay within the per-line limit of
+# 1000 that requirement 1 enforces: a larger number is rejected with 400 by
+# local validation before any gRPC call is made.
+#
+# Expect 409 with a "shortages" array naming the product, what was requested
+# and what is actually left. Nothing is written, nothing is reserved.
+POST {{baseUrl}}/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 1000
+    }
+  ]
+}
+
+
+### CASE 2 - the inventory service is stopped or too slow
+# Stop it first:
+#   cd inventory-service && docker compose stop inventory
+# Or make it slow (6s delay against a 3s client budget):
+#   INVENTORY_ARTIFICIAL_DELAY_MS=6000 docker compose up -d inventory
+#
+# Expect 503 within about 3 seconds, never a hang:
+#   stopped -> "The inventory service is unavailable. Your order was not placed..."
+#   slow    -> "The inventory service did not respond in time. Your order was not placed..."
+#
+# Afterwards check the warehouse: the quantity must be unchanged. A reserve that
+# timed out may still have succeeded on the server, so the application releases
+# it; the tombstone then refuses the late reserve.
+POST {{baseUrl}}/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 1
+    }
+  ]
+}
+
+
+### CASE 2b - the catalogue still works while the warehouse is down
+# Expect 200 with "stock": null. A product page without a quantity is far
+# better than an error page.
+GET {{baseUrl}}/products/{{productId}}
+Authorization: Bearer {{token}}
+
+
+### CASE 3 - the reservation succeeded but saving the order failed
+# @orphanProductId exists in the warehouse but not in the catalogue, so the
+# reserve succeeds and the order write then fails.
+#
+# Expect 404 "Product with id 9999 not found", and - the point of the test -
+# the warehouse quantity back exactly where it started, because the application
+# released the reservation. The log line reads:
+#   Released reservation <uuid> after a failure (released=true)
+POST {{baseUrl}}/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": {{orphanProductId}},
+      "quantity": 3
+    }
+  ]
+}
+
+
+### PROOF - the race for the last unit
+# Set the product to a single unit first:
+#   docker compose exec inventory-postgres psql -U postgres -d inventory \
+#     -c "UPDATE stock SET available=1, reserved=0 WHERE product_id='2'"
+#
+# Then send this request many times AT ONCE. REST Client fires one at a time,
+# so for a real race use the script instead:
+#   npm run demo:req2 -- 30
+#
+# Exactly one gets 201; every other gets 409. Final state: available 0, reserved 1.
+POST {{baseUrl}}/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 1
+    }
+  ]
+}
+
+
+### Read the order that was created
+GET {{baseUrl}}/orders?page=1&limit=20
+Authorization: Bearer {{token}}

@@ -61,9 +61,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
+    const { error, message, extra } = this.describe(exception, status);
+
     response.status(status).json({
       statusCode: status,
-      ...this.describe(exception, status),
+      error,
+      message,
+      // Context an exception chose to attach, such as the `shortages` list on
+      // a refused order. The five standard fields always win, so the shape
+      // every client already relies on cannot be overwritten.
+      ...extra,
       path: request.url,
       timestamp: new Date().toISOString(),
     });
@@ -72,7 +79,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
   private describe(
     exception: unknown,
     status: number,
-  ): { error: string; message: string | string[] } {
+  ): {
+    error: string;
+    message: string | string[];
+    extra?: Record<string, unknown>;
+  } {
     const fallback = {
       error: titleCaseStatus(status),
       message: 'Internal server error',
@@ -88,10 +99,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return { error: fallback.error, message: body };
     }
 
-    const { error, message } = body as {
-      error?: unknown;
-      message?: unknown;
-    };
+    const {
+      error,
+      message,
+      statusCode: _statusCode,
+      path: _path,
+      timestamp: _timestamp,
+      ...extra
+    } = body as Record<string, unknown>;
 
     return {
       error: typeof error === 'string' ? error : fallback.error,
@@ -99,6 +114,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         typeof message === 'string' || Array.isArray(message)
           ? (message as string | string[])
           : exception.message,
+      extra: Object.keys(extra).length > 0 ? extra : undefined,
     };
   }
 }

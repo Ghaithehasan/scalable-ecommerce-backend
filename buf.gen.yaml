@@ -1,0 +1,18 @@
+# Dev-time only. The generated client types in src/inventory/generated are
+# committed, so the Docker image needs neither buf nor ts-proto.
+#
+# Encode/decode helpers are switched off: @grpc/proto-loader does the wire
+# serialisation at runtime, so they would be dead code pulling @bufbuild/protobuf
+# in as a runtime dependency.
+version: v2
+clean: true
+plugins:
+  - local: protoc-gen-ts_proto
+    out: src/inventory/generated
+    opt:
+      - nestJs=true
+      - outputEncodeMethods=false
+      - outputJsonMethods=false
+      - outputClientImpl=false
+      - esModuleInterop=true
+      - snakeToCamel=true
