@@ -17,8 +17,7 @@ export class OrderItemResponseDto {
       productName: item.product?.name ?? null,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      lineTotal:
-        Math.round(item.unitPrice * 100) * item.quantity / 100,
+      lineTotal: (Math.round(item.unitPrice * 100) * item.quantity) / 100,
     };
   }
 }
@@ -26,6 +25,7 @@ export class OrderItemResponseDto {
 export class OrderResponseDto {
   id: number;
   orderNumber: string;
+  inventoryReservationId: string | null;
   userId: number;
   status: OrderStatus;
   totalAmount: number;
@@ -39,6 +39,7 @@ export class OrderResponseDto {
     return {
       id: order.id,
       orderNumber: order.orderNumber,
+      inventoryReservationId: order.inventoryReservationId ?? null,
       userId: order.userId,
       status: order.status,
       totalAmount: order.totalAmount,

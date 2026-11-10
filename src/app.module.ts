@@ -1,4 +1,3 @@
-
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -30,7 +29,9 @@ import { OrdersModule } from './orders/orders.module';
         autoLoadEntities: true,
 
         // Never synchronize the schema automatically in production
-        synchronize: configService.get<string>('NODE_ENV') !== 'production',
+        synchronize: false,
+        connectTimeoutMS: 5000,
+        extra: { statement_timeout: 5000, lock_timeout: 3000 },
 
         // Use TLS when connecting to Azure PostgreSQL
         ssl:

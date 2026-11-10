@@ -9,6 +9,7 @@ RUN npm ci
 
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src ./src
+COPY scripts ./scripts
 RUN npm run build
 
 # ---- runtime stage: production dependencies and the compiled output only ----
@@ -20,6 +21,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
+COPY proto ./proto
 
 # Runs unprivileged; the image ships no source, tests or build tooling.
 USER node

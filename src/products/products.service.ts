@@ -25,6 +25,7 @@ import { QueryProductsDto } from './dto/query-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductEntity } from './entities/product.entity';
 import { ProductImageEntity } from './entities/product-image.entity';
+import { InventoryClient } from '../inventory/inventory.client';
 
 @Injectable()
 export class ProductsService {
@@ -34,6 +35,7 @@ export class ProductsService {
     private readonly categoriesService: CategoriesService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly inventory: InventoryClient,
   ) {}
 
   /**
@@ -73,8 +75,16 @@ export class ProductsService {
       take: query.limit,
     });
 
+    const quantities = await this.inventory.getStocks(
+      products.map((product) => String(product.id)),
+    );
     return PaginatedResponseDto.of(
-      products.map((product) => ProductResponseDto.fromEntity(product)),
+      products.map((product) =>
+        ProductResponseDto.fromEntity(
+          product,
+          quantities.get(String(product.id)) ?? null,
+        ),
+      ),
       total,
       query.page,
       query.limit,
@@ -96,6 +106,14 @@ export class ProductsService {
       : this.productRepository;
 
     return repository.find({ where: { id: In(ids) } });
+  }
+
+  async responseWithStock(product: ProductEntity): Promise<ProductResponseDto> {
+    const quantities = await this.inventory.getStocks([String(product.id)]);
+    return ProductResponseDto.fromEntity(
+      product,
+      quantities.get(String(product.id)) ?? null,
+    );
   }
 
   async findOneOrFail(
@@ -215,7 +233,9 @@ export class ProductsService {
    * Normalises an image set: exactly one image is primary and every image has
    * an explicit position.
    */
-  private buildImages(images?: ProductImageDto[]): Partial<ProductImageEntity>[] {
+  private buildImages(
+    images?: ProductImageDto[],
+  ): Partial<ProductImageEntity>[] {
     if (!images?.length) {
       return [];
     }

@@ -9,6 +9,7 @@ import { ProductEntity } from '../src/products/entities/product.entity';
 import { ProductImageEntity } from '../src/products/entities/product-image.entity';
 import { ProductsController } from '../src/products/products.controller';
 import { ProductsService } from '../src/products/products.service';
+import { InventoryClient } from '../src/inventory/inventory.client';
 import { createHarness, CUSTOMER, Harness, RESPONSIBLE } from './test-harness';
 
 interface FindAndCountArgs {
@@ -163,6 +164,18 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
       providers: [
         ProductsService,
         CategoriesService,
+        {
+          provide: InventoryClient,
+          useValue: {
+            getStocks: jest.fn().mockResolvedValue(
+              new Map([
+                ['1', 10],
+                ['2', 10],
+                ['3', 0],
+              ]),
+            ),
+          },
+        },
         {
           provide: getRepositoryToken(ProductEntity),
           useValue: productRepository,

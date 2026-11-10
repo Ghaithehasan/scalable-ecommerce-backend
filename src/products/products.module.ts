@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { InventoryModule } from '../inventory/inventory.module';
 
 import { CategoriesController } from './categories.controller';
 import { CategoriesService } from './categories.service';
@@ -16,6 +17,7 @@ import { ProductsService } from './products.service';
  */
 @Module({
   imports: [
+    InventoryModule,
     TypeOrmModule.forFeature([
       ProductEntity,
       ProductImageEntity,

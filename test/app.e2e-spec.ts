@@ -73,6 +73,12 @@ describe('Users HTTP API (mocked repository)', () => {
 
     usersService = moduleFixture.get(UsersService);
     app = moduleFixture.createNestApplication();
+    // This suite isolates UsersService, rather than testing JWT authentication.
+    // CurrentUser still needs an authenticated principal for ownership checks.
+    app.use((req: { user?: unknown }, _res: unknown, next: () => void) => {
+      req.user = { id: 1, role: UserRole.RESPONSIBLE };
+      next();
+    });
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,

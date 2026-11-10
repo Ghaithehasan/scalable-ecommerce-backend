@@ -23,6 +23,7 @@ export class ProductResponseDto {
   name: string;
   description: string | null;
   price: number;
+  availableQuantity: number | null;
   categoryId: number;
   category: CategoryResponseDto | null;
   isActive: boolean;
@@ -30,7 +31,10 @@ export class ProductResponseDto {
   createdAt: Date;
   updatedAt: Date;
 
-  static fromEntity(product: ProductEntity): ProductResponseDto {
+  static fromEntity(
+    product: ProductEntity,
+    availableQuantity: number | null = null,
+  ): ProductResponseDto {
     const images = product.images ?? [];
 
     return {
@@ -38,6 +42,7 @@ export class ProductResponseDto {
       name: product.name,
       description: product.description ?? null,
       price: product.price,
+      availableQuantity,
       categoryId: product.categoryId,
       category: product.category
         ? CategoryResponseDto.fromEntity(product.category)
