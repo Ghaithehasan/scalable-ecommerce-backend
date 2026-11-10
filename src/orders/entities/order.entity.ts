@@ -24,6 +24,14 @@ export class OrderEntity {
   @Column({ name: 'order_number', type: 'varchar', length: 50, unique: true })
   orderNumber!: string;
 
+  @Column({
+    name: 'inventory_reservation_id',
+    type: 'uuid',
+    nullable: true,
+    unique: true,
+  })
+  inventoryReservationId!: string | null;
+
   // The owner of the order. Every ownership check in this module resolves to
   // this column, and every customer-facing query is filtered by it.
   @Column({ name: 'user_id', type: 'int' })

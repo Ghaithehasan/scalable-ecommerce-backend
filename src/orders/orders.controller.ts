@@ -5,13 +5,19 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Headers,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -31,6 +37,12 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post()
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Reuse the same key for retries of one logical order; changing the items with the same key returns 409.',
+  })
   @ApiOperation({
     summary: 'Place an order for the authenticated user',
     description:
@@ -39,8 +51,13 @@ export class OrdersController {
   async create(
     @Body() dto: CreateOrderDto,
     @CurrentUser() currentUser: UserResponseDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<OrderResponseDto> {
-    const order = await this.ordersService.create(dto, currentUser);
+    const order = await this.ordersService.create(
+      dto,
+      currentUser,
+      idempotencyKey,
+    );
     return OrderResponseDto.fromEntity(order);
   }
 

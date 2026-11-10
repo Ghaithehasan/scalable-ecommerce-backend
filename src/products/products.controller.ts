@@ -51,7 +51,7 @@ export class ProductsController {
     @CurrentUser() currentUser: UserResponseDto,
   ): Promise<ProductResponseDto> {
     const product = await this.productsService.findOneOrFail(id, currentUser);
-    return ProductResponseDto.fromEntity(product);
+    return this.productsService.responseWithStock(product);
   }
 
   @Post()
@@ -61,7 +61,7 @@ export class ProductsController {
   })
   async create(@Body() dto: CreateProductDto): Promise<ProductResponseDto> {
     const product = await this.productsService.create(dto);
-    return ProductResponseDto.fromEntity(product);
+    return this.productsService.responseWithStock(product);
   }
 
   @Patch(':id')
@@ -75,7 +75,7 @@ export class ProductsController {
     @Body() dto: UpdateProductDto,
   ): Promise<ProductResponseDto> {
     const product = await this.productsService.update(id, dto);
-    return ProductResponseDto.fromEntity(product);
+    return this.productsService.responseWithStock(product);
   }
 
   @Delete(':id')

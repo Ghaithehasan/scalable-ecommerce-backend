@@ -8,6 +8,8 @@ import { OrdersController } from '../src/orders/orders.controller';
 import { OrdersService } from '../src/orders/orders.service';
 import { ProductEntity } from '../src/products/entities/product.entity';
 import { ProductsService } from '../src/products/products.service';
+import { InventoryClient } from '../src/inventory/inventory.client';
+import { InventoryOperationsService } from '../src/inventory/inventory-operations.service';
 import {
   createHarness,
   CUSTOMER,
@@ -119,6 +121,21 @@ describe('Orders HTTP API (mocked repositories)', () => {
         }
         return saved;
       }),
+      update: jest
+        .fn()
+        .mockImplementation(
+          async (
+            where: { id: number; status: OrderStatus },
+            patch: Partial<OrderEntity>,
+          ) => {
+            const order = orders.find(
+              (item) => item.id === where.id && item.status === where.status,
+            );
+            if (!order) return { affected: 0 };
+            Object.assign(order, patch);
+            return { affected: 1 };
+          },
+        ),
       remove: jest.fn().mockImplementation(async (order: OrderEntity) => {
         orders = orders.filter((existing) => existing.id !== order.id);
         return order;
@@ -139,6 +156,10 @@ describe('Orders HTTP API (mocked repositories)', () => {
         .mockImplementation(
           async (runInTransaction: (manager: unknown) => Promise<unknown>) =>
             runInTransaction({
+              query: async (sql: string) =>
+                sql.includes('SELECT * FROM inventory_order_operations')
+                  ? [{ status: 'PENDING' }]
+                  : [[], 1],
               getRepository: (entity: unknown) =>
                 entity === OrderItemEntity
                   ? orderItemRepository
@@ -164,6 +185,46 @@ describe('Orders HTTP API (mocked repositories)', () => {
         { provide: getRepositoryToken(OrderEntity), useValue: orderRepository },
         { provide: getDataSourceToken(), useValue: dataSource },
         { provide: ProductsService, useValue: productsService },
+        {
+          provide: InventoryClient,
+          useValue: {
+            reserveStock: jest.fn().mockResolvedValue({}),
+            releaseStock: jest.fn().mockResolvedValue({}),
+          },
+        },
+        {
+          provide: InventoryOperationsService,
+          useValue: {
+            operationKey: jest.fn().mockReturnValue('test-key'),
+            fingerprint: jest.fn().mockReturnValue('test-hash'),
+            find: jest.fn().mockResolvedValue(undefined),
+            begin: jest
+              .fn()
+              .mockImplementation(
+                async (
+                  userId: number,
+                  key: string,
+                  hash: string,
+                  items: unknown[],
+                  total: number,
+                ) => ({
+                  created: true,
+                  operation: {
+                    id: '00000000-0000-4000-8000-000000000001',
+                    user_id: userId,
+                    idempotency_key: key,
+                    request_hash: hash,
+                    items,
+                    total_amount: String(total),
+                    status: 'PENDING',
+                  },
+                }),
+              ),
+            cancelPendingCreation: jest.fn().mockResolvedValue(undefined),
+            enqueueRelease: jest.fn().mockResolvedValue(undefined),
+            tryCompensate: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     });
   });
