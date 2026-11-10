@@ -1,0 +1,102 @@
+{
+  "dataset": "ecommerce-demo-v1",
+  "categories": [
+    {
+      "slug": "demo-electronics",
+      "name": "Electronics",
+      "description": "Useful electronics and everyday charging accessories."
+    },
+    {
+      "slug": "demo-home-kitchen",
+      "name": "Home & Kitchen",
+      "description": "Practical essentials for the kitchen and daily life."
+    },
+    {
+      "slug": "demo-office",
+      "name": "Office & Stationery",
+      "description": "Comfortable workspace accessories and stationery."
+    }
+  ],
+  "products": [
+    {
+      "sku": "DEMO-KEYBOARD",
+      "category": "demo-electronics",
+      "name": "Wireless Compact Keyboard",
+      "description": "A compact wireless keyboard with quiet keys for everyday work.",
+      "price": "34.90",
+      "initialQuantity": 120
+    },
+    {
+      "sku": "DEMO-MOUSE",
+      "category": "demo-electronics",
+      "name": "Ergonomic Wireless Mouse",
+      "description": "A comfortable wireless mouse with adjustable pointer sensitivity.",
+      "price": "19.90",
+      "initialQuantity": 5
+    },
+    {
+      "sku": "DEMO-CHARGER",
+      "category": "demo-electronics",
+      "name": "65W USB-C Wall Charger",
+      "description": "A compact USB-C charger for compatible phones, tablets, and laptops.",
+      "price": "29.90",
+      "initialQuantity": 0
+    },
+    {
+      "sku": "DEMO-BOTTLE",
+      "category": "demo-home-kitchen",
+      "name": "Stainless Steel Water Bottle",
+      "description": "A reusable 750 ml insulated bottle with a leak-resistant lid.",
+      "price": "18.50",
+      "initialQuantity": 80
+    },
+    {
+      "sku": "DEMO-MUG",
+      "category": "demo-home-kitchen",
+      "name": "Ceramic Coffee Mug",
+      "description": "A dishwasher-safe 350 ml ceramic mug with a comfortable handle.",
+      "price": "12.00",
+      "initialQuantity": 3
+    },
+    {
+      "sku": "DEMO-SCALE",
+      "category": "demo-home-kitchen",
+      "name": "Digital Kitchen Scale",
+      "description": "A slim kitchen scale with a tare function and an easy-to-read display.",
+      "price": "24.90",
+      "initialQuantity": 0
+    },
+    {
+      "sku": "DEMO-NOTEBOOK",
+      "category": "demo-office",
+      "name": "A5 Hardcover Notebook",
+      "description": "An A5 notebook with 160 ruled pages, a bookmark, and an elastic closure.",
+      "price": "8.90",
+      "initialQuantity": 200
+    },
+    {
+      "sku": "DEMO-STAND",
+      "category": "demo-office",
+      "name": "Adjustable Aluminum Laptop Stand",
+      "description": "An adjustable stand with non-slip pads for a comfortable desk setup.",
+      "price": "39.90",
+      "initialQuantity": 2
+    }
+  ],
+  "users": [
+    {
+      "name": "Maya Demo",
+      "email": "maya.customer@example.com",
+      "gender": "FEMALE",
+      "role": "CUSTOMER",
+      "passwordEnv": "DEMO_CUSTOMER_PASSWORD"
+    },
+    {
+      "name": "Omar Demo",
+      "email": "omar.manager@example.com",
+      "gender": "MALE",
+      "role": "RESPONSIBLE",
+      "passwordEnv": "DEMO_MANAGER_PASSWORD"
+    }
+  ]
+}

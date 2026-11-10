@@ -1,5 +1,7 @@
 Inventory gRPC integration, HTTP idempotency and persistent compensation are documented in [docs/inventory-integration.md](docs/inventory-integration.md). The combined two-application stack and real PostgreSQL tests are in the sibling Inventory project.
 
+Manual, repeatable demo data and Azure container commands are documented in [docs/demo-seeding.md](docs/demo-seeding.md). Preview with `npm run seed:demo`; writes require `--apply`.
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>

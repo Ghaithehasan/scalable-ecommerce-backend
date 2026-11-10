@@ -22,6 +22,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 COPY proto ./proto
+COPY scripts ./scripts
 
 # Runs unprivileged; the image ships no source, tests or build tooling.
 USER node
