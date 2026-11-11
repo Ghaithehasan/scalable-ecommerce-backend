@@ -223,13 +223,14 @@ export class OrdersService {
     const ownerId = resolveOwnerFilter(currentUser, query.userId, 'orders');
     if (ownerId !== undefined) where.userId = ownerId;
     if (query.status !== undefined) where.status = query.status;
-    const [orders, total] = await this.orderRepository.findAndCount({
+    const orders = await this.orderRepository.find({
       where,
       relations: { items: { product: true } },
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: query.skip,
       take: query.limit,
     });
+    const total = await this.orderRepository.count({ where });
     return PaginatedResponseDto.of(
       orders.map((order) => OrderResponseDto.fromEntity(order)),
       total,

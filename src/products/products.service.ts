@@ -26,6 +26,7 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductEntity } from './entities/product.entity';
 import { ProductImageEntity } from './entities/product-image.entity';
 import { InventoryClient } from '../inventory/inventory.client';
+import { ProductCacheService } from './product-cache.service';
 
 @Injectable()
 export class ProductsService {
@@ -36,6 +37,7 @@ export class ProductsService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly inventory: InventoryClient,
+    private readonly productCache: ProductCacheService,
   ) {}
 
   /**
@@ -120,7 +122,8 @@ export class ProductsService {
     id: number,
     currentUser: UserResponseDto,
   ): Promise<ProductEntity> {
-    const product = await this.productRepository.findOne({
+    const cached = await this.productCache.get(id);
+    const product = cached ?? await this.productRepository.findOne({
       where: { id },
       relations: { category: true, images: true },
     });
@@ -131,6 +134,7 @@ export class ProductsService {
       throw new NotFoundException(`Product with id ${id} not found`);
     }
 
+    if (!cached) await this.productCache.set(product);
     return product;
   }
 
@@ -147,6 +151,7 @@ export class ProductsService {
     });
 
     const saved = await this.productRepository.save(product);
+    await this.productCache.invalidate(saved.id);
     return this.reload(saved.id);
   }
 
@@ -203,6 +208,7 @@ export class ProductsService {
       }
     });
 
+    await this.productCache.invalidate(product.id);
     return this.reload(product.id);
   }
 
@@ -227,6 +233,7 @@ export class ProductsService {
 
       throw error;
     }
+    await this.productCache.invalidate(id);
   }
 
   /**

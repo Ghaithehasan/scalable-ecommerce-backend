@@ -18,11 +18,12 @@ import {
   RESPONSIBLE,
 } from './test-harness';
 
-interface FindAndCountArgs {
+interface FindArgs {
   where?: { userId?: number; status?: OrderStatus };
   skip?: number;
   take?: number;
   order?: Record<string, string>;
+  relations?: { items: { product: boolean } };
 }
 
 function makeProduct(
@@ -86,18 +87,30 @@ describe('Orders HTTP API (mocked repositories)', () => {
       makeProduct(3, 50, false),
     ];
 
+    const matchingOrders = (where: FindArgs['where'] = {}) =>
+      orders.filter(
+        (order) =>
+          (where.userId === undefined || order.userId === where.userId) &&
+          (where.status === undefined || order.status === where.status),
+      );
+
     orderRepository = {
-      findAndCount: jest
+      find: jest
         .fn()
-        .mockImplementation(async (args: FindAndCountArgs) => {
-          const where = args.where ?? {};
-          const matching = orders.filter(
-            (order) =>
-              (where.userId === undefined || order.userId === where.userId) &&
-              (where.status === undefined || order.status === where.status),
-          );
-          return [matching, matching.length];
+        .mockImplementation(async (args: FindArgs) => {
+          const skip = args.skip ?? 0;
+          return matchingOrders(args.where)
+            .sort(
+              (a, b) =>
+                b.createdAt.getTime() - a.createdAt.getTime() || b.id - a.id,
+            )
+            .slice(skip, args.take === undefined ? undefined : skip + args.take);
         }),
+      count: jest
+        .fn()
+        .mockImplementation(async (args: Pick<FindArgs, 'where'>) =>
+          matchingOrders(args.where).length,
+        ),
       findOne: jest
         .fn()
         .mockImplementation(
@@ -327,9 +340,11 @@ describe('Orders HTTP API (mocked repositories)', () => {
         .get('/orders')
         .expect(200);
 
-      const args = orderRepository.findAndCount.mock
-        .calls[0][0] as FindAndCountArgs;
+      const args = orderRepository.find.mock.calls[0][0] as FindArgs;
       expect(args.where?.userId).toBe(CUSTOMER.id);
+      expect(orderRepository.count).toHaveBeenCalledWith({
+        where: { userId: CUSTOMER.id },
+      });
       expect(response.body.data).toHaveLength(1);
       expect(response.body.data[0].userId).toBe(CUSTOMER.id);
     });
@@ -340,7 +355,8 @@ describe('Orders HTTP API (mocked repositories)', () => {
         .expect(403);
 
       expect(response.body).toMatchObject({ statusCode: 403 });
-      expect(orderRepository.findAndCount).not.toHaveBeenCalled();
+      expect(orderRepository.find).not.toHaveBeenCalled();
+      expect(orderRepository.count).not.toHaveBeenCalled();
     });
 
     it('lets a RESPONSIBLE user read every order and filter by user', async () => {
@@ -350,13 +366,16 @@ describe('Orders HTTP API (mocked repositories)', () => {
         .get('/orders')
         .expect(200);
       expect(all.body.data).toHaveLength(2);
+      expect(orderRepository.count).toHaveBeenNthCalledWith(1, { where: {} });
 
       await request(harness.app.getHttpServer())
         .get(`/orders?userId=${OTHER_CUSTOMER.id}`)
         .expect(200);
-      const args = orderRepository.findAndCount.mock
-        .calls[1][0] as FindAndCountArgs;
+      const args = orderRepository.find.mock.calls[1][0] as FindArgs;
       expect(args.where?.userId).toBe(OTHER_CUSTOMER.id);
+      expect(orderRepository.count).toHaveBeenNthCalledWith(2, {
+        where: { userId: OTHER_CUSTOMER.id },
+      });
     });
 
     it('refuses a customer reading an order that belongs to someone else', async () => {
@@ -383,16 +402,23 @@ describe('Orders HTTP API (mocked repositories)', () => {
     });
 
     it('filters a page by status and keeps the ordering deterministic', async () => {
-      await request(harness.app.getHttpServer())
+      const response = await request(harness.app.getHttpServer())
         .get('/orders?status=PENDING&page=2&limit=5')
         .expect(200);
 
-      const args = orderRepository.findAndCount.mock
-        .calls[0][0] as FindAndCountArgs;
+      const args = orderRepository.find.mock.calls[0][0] as FindArgs;
       expect(args.where?.status).toBe(OrderStatus.PENDING);
       expect(args.skip).toBe(5);
       expect(args.take).toBe(5);
       expect(args.order).toEqual({ createdAt: 'DESC', id: 'DESC' });
+      expect(args.relations).toEqual({ items: { product: true } });
+      expect(orderRepository.find).toHaveBeenCalledTimes(1);
+      expect(orderRepository.count).toHaveBeenCalledTimes(1);
+      expect(orderRepository.count).toHaveBeenCalledWith({
+        where: { userId: CUSTOMER.id, status: OrderStatus.PENDING },
+      });
+      expect(response.body.data).toEqual([]);
+      expect(response.body.meta).toMatchObject({ total: 1, page: 2, limit: 5 });
     });
 
     it('rejects an unknown status value', async () => {

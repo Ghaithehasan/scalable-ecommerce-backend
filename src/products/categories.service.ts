@@ -16,6 +16,7 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { QueryCategoriesDto } from './dto/query-categories.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CategoryEntity } from './entities/category.entity';
+import { ProductCacheService } from './product-cache.service';
 
 /** Builds a URL-safe slug from a category name. */
 export function slugify(name: string): string {
@@ -32,6 +33,7 @@ export class CategoriesService {
   constructor(
     @InjectRepository(CategoryEntity)
     private readonly categoryRepository: Repository<CategoryEntity>,
+    private readonly productCache: ProductCacheService,
   ) {}
 
   async findAll(
@@ -101,7 +103,9 @@ export class CategoriesService {
       category.isActive = dto.isActive;
     }
 
-    return this.saveOrConflict(category);
+    const saved = await this.saveOrConflict(category);
+    await this.productCache.invalidateCategory(saved.id);
+    return saved;
   }
 
   async remove(id: number): Promise<void> {

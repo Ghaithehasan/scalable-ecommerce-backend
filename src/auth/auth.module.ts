@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import type { ConfigType } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
@@ -35,7 +35,20 @@ import { RolesGuard } from './guards/roles.guard';
         },
       }),
     }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const limit = Number(
+          configService.get<string>('HTTP_RATE_LIMIT') ?? '60',
+        );
+        if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000_000) {
+          throw new Error(
+            'HTTP_RATE_LIMIT must be an integer between 1 and 1000000',
+          );
+        }
+        return [{ ttl: 60000, limit }];
+      },
+    }),
   ],
   controllers: [AuthController],
   providers: [

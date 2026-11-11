@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -29,6 +30,7 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Get()
+  @Header('Cache-Control', 'private, no-cache')
   @ApiOperation({ summary: 'List categories (paginated)' })
   findAll(
     @Query() query: QueryCategoriesDto,

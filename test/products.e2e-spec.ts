@@ -9,6 +9,7 @@ import { ProductEntity } from '../src/products/entities/product.entity';
 import { ProductImageEntity } from '../src/products/entities/product-image.entity';
 import { ProductsController } from '../src/products/products.controller';
 import { ProductsService } from '../src/products/products.service';
+import { ProductCacheService } from '../src/products/product-cache.service';
 import { InventoryClient } from '../src/inventory/inventory.client';
 import { createHarness, CUSTOMER, Harness, RESPONSIBLE } from './test-harness';
 
@@ -55,6 +56,10 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
   let productRepository: Record<string, jest.Mock>;
   let categoryRepository: Record<string, jest.Mock>;
   let imageRepository: Record<string, jest.Mock>;
+  let productCache: Record<string, jest.Mock>;
+  let cacheEntries: Map<number, ProductEntity>;
+  let inventoryClient: { getStocks: jest.Mock };
+  let dataSource: { transaction: jest.Mock };
 
   const createProductBody = {
     name: 'Wireless Headphones',
@@ -145,7 +150,7 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
       create: jest.fn().mockImplementation((data: unknown) => data),
     };
 
-    const dataSource = {
+    dataSource = {
       transaction: jest
         .fn()
         .mockImplementation(
@@ -159,22 +164,40 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
         ),
     };
 
+    cacheEntries = new Map();
+    productCache = {
+      get: jest.fn(async (id: number) =>
+        structuredClone(cacheEntries.get(id) ?? null),
+      ),
+      set: jest.fn(async (product: ProductEntity) => {
+        cacheEntries.set(product.id, structuredClone(product));
+      }),
+      invalidate: jest.fn(async (id: number) => {
+        cacheEntries.delete(id);
+      }),
+      invalidateCategory: jest.fn(async (id: number) => {
+        for (const [key, product] of cacheEntries)
+          if (product.categoryId === id) cacheEntries.delete(key);
+      }),
+    };
+    inventoryClient = {
+      getStocks: jest.fn().mockResolvedValue(
+        new Map([
+          ['1', 10],
+          ['2', 10],
+          ['3', 0],
+        ]),
+      ),
+    };
     harness = await createHarness({
       controllers: [ProductsController, CategoriesController],
       providers: [
         ProductsService,
         CategoriesService,
+        { provide: ProductCacheService, useValue: productCache },
         {
           provide: InventoryClient,
-          useValue: {
-            getStocks: jest.fn().mockResolvedValue(
-              new Map([
-                ['1', 10],
-                ['2', 10],
-                ['3', 0],
-              ]),
-            ),
-          },
+          useValue: inventoryClient,
         },
         {
           provide: getRepositoryToken(ProductEntity),
@@ -191,6 +214,109 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
 
   afterEach(async () => {
     await harness?.app.close();
+  });
+
+  describe('product display cache', () => {
+    it('fills on a miss, reuses catalogue data on a hit, and retrieves stock each time', async () => {
+      const first = await request(harness.app.getHttpServer())
+        .get('/products/1')
+        .expect(200);
+      inventoryClient.getStocks.mockResolvedValueOnce(new Map([['1', 4]]));
+      const second = await request(harness.app.getHttpServer())
+        .get('/products/1')
+        .expect(200);
+      expect(productRepository.findOne).toHaveBeenCalledTimes(1);
+      expect(productCache.set).toHaveBeenCalledTimes(1);
+      expect(inventoryClient.getStocks).toHaveBeenCalledTimes(2);
+      expect(first.body.availableQuantity).toBe(10);
+      expect(second.body.availableQuantity).toBe(4);
+      expect(second.body).toEqual({ ...first.body, availableQuantity: 4 });
+    });
+
+    it('applies inactive-product authorization on hits as well as misses', async () => {
+      harness.actAs(RESPONSIBLE);
+      await request(harness.app.getHttpServer()).get('/products/3').expect(200);
+      await request(harness.app.getHttpServer()).get('/products/3').expect(200);
+      harness.actAs(CUSTOMER);
+      await request(harness.app.getHttpServer()).get('/products/3').expect(404);
+      expect(productRepository.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not cache missing products', async () => {
+      await request(harness.app.getHttpServer())
+        .get('/products/999')
+        .expect(404);
+      expect(productCache.set).not.toHaveBeenCalled();
+    });
+
+    it('waits for a successful update transaction before invalidating', async () => {
+      let commit!: () => void;
+      dataSource.transaction.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          commit = resolve;
+        }),
+      );
+      const updating = harness.app
+        .get(ProductsService)
+        .update(1, { price: 55 });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(productCache.invalidate).not.toHaveBeenCalled();
+      commit();
+      await updating;
+      expect(productCache.invalidate).toHaveBeenCalledWith(1);
+    });
+
+    it('does not invalidate when the database update fails', async () => {
+      dataSource.transaction.mockRejectedValueOnce(
+        new Error('transaction failed'),
+      );
+      await expect(
+        harness.app.get(ProductsService).update(1, { price: 55 }),
+      ).rejects.toThrow('transaction failed');
+      expect(productCache.invalidate).not.toHaveBeenCalled();
+    });
+
+    it('invalidates related products after a category update', async () => {
+      await request(harness.app.getHttpServer()).get('/products/1').expect(200);
+      await request(harness.app.getHttpServer()).get('/products/2').expect(200);
+      harness.actAs(RESPONSIBLE);
+      await request(harness.app.getHttpServer())
+        .patch('/categories/1')
+        .send({ name: 'Renamed' })
+        .expect(200);
+      expect(productCache.invalidateCategory).toHaveBeenCalledWith(1);
+      expect(cacheEntries.has(1)).toBe(false);
+      expect(cacheEntries.has(2)).toBe(true);
+      productRepository.findOne.mockResolvedValueOnce(
+        makeProduct(1, { category: makeCategory(1, 'Renamed') }),
+      );
+      const response = await request(harness.app.getHttpServer())
+        .get('/products/1')
+        .expect(200);
+      expect(response.body.category.name).toBe('Renamed');
+    });
+
+    it('reads checkout prices from PostgreSQL even when display data is cached', async () => {
+      cacheEntries.set(1, makeProduct(1, { price: 1 }));
+      productRepository.find.mockResolvedValueOnce([
+        makeProduct(1, { price: 222 }),
+      ]);
+      const products = await harness.app.get(ProductsService).findByIds([1]);
+      expect(products[0].price).toBe(222);
+      expect(productRepository.find).toHaveBeenCalledTimes(1);
+      expect(productCache.get).not.toHaveBeenCalled();
+      const transactional = {
+        find: jest.fn().mockResolvedValue([makeProduct(1, { price: 333 })]),
+      };
+      const manager = {
+        getRepository: jest.fn().mockReturnValue(transactional),
+      };
+      const insideTransaction = await harness.app
+        .get(ProductsService)
+        .findByIds([1], manager as never);
+      expect(insideTransaction[0].price).toBe(333);
+      expect(transactional.find).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('listing, filtering and pagination', () => {
@@ -352,6 +478,7 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
         price: createProductBody.price,
         isActive: true,
       });
+      expect(productCache.invalidate).toHaveBeenCalledWith(99);
     });
 
     it('returns 404 when the referenced category does not exist', async () => {
@@ -415,6 +542,7 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
           .expect(409);
 
         expect(response.body.message).toContain('isActive');
+        expect(productCache.invalidate).not.toHaveBeenCalled();
       },
     );
 
@@ -424,6 +552,7 @@ describe('Products and categories HTTP API (mocked repositories)', () => {
         .delete('/products/1')
         .expect(204);
       expect(productRepository.remove).toHaveBeenCalled();
+      expect(productCache.invalidate).toHaveBeenCalledWith(1);
     });
 
     it('keeps validating the body on a partial update', async () => {

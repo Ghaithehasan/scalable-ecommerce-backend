@@ -9,6 +9,7 @@ import { ProductEntity } from './entities/product.entity';
 import { ProductImageEntity } from './entities/product-image.entity';
 import { ProductsController } from './products.controller';
 import { ProductsService } from './products.service';
+import { ProductCacheService } from './product-cache.service';
 
 /**
  * Owns the catalogue: products, their images and the categories that classify
@@ -25,7 +26,7 @@ import { ProductsService } from './products.service';
     ]),
   ],
   controllers: [ProductsController, CategoriesController],
-  providers: [ProductsService, CategoriesService],
+  providers: [ProductsService, CategoriesService, ProductCacheService],
   exports: [ProductsService, CategoriesService],
 })
 export class ProductsModule {}
